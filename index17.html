@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bedtime Timer</title>
+    <style>
+        :root {
+            --bg-color: #1a1b26;
+            --text-color: #a9b1d6;
+            --accent-color: #7aa2f7;
+            --card-bg: #24283b;
+            --dim: #414868;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #sleep-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 9999;
+            transition: background-color 0.8s ease;
+        }
+
+        .container {
+            width: 92vw;
+            max-width: 480px;
+            height: 88vh;
+            background: var(--card-bg);
+            border-radius: 30px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            border: 1px solid var(--dim);
+        }
+
+        .header { padding: 15px; text-align: center; border-bottom: 1px solid var(--dim); }
+        h1 { font-weight: 300; font-size: 1.1rem; margin: 0; letter-spacing: 2px; }
+
+        .view {
+            flex-grow: 1;
+            padding: 15px;
+            display: none;
+            flex-direction: column;
+            overflow-y: auto;
+            margin-bottom: 85px;
+        }
+        .view.active { display: flex; }
+
+        .input-section {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input {
+            background: #16161e;
+            border: 1px solid var(--dim);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 1rem;
+            width: calc(100% - 26px);
+        }
+
+        .item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            margin-bottom: 10px;
+            border-radius: 15px;
+        }
+
+        .taskbar {
+            position: absolute; bottom: 0; width: 100%; height: 80px;
+            background: rgba(22, 22, 30, 0.98); display: flex;
+            border-top: 1px solid var(--dim); backdrop-filter: blur(10px);
+        }
+
+        .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--dim); font-size: 0.75rem; }
+        .nav-item.active { color: var(--accent-color); }
+
+        button {
+            background: var(--accent-color); color: #1a1b26; border: none;
+            padding: 12px; border-radius: 10px; font-weight: 600; cursor: pointer;
+        }
+
+        .setting-row { 
+            margin-bottom: 20px; 
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--dim);
+        }
+        
+        .control-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem;}
+
+        input[type="range"] { width: 100%; margin: 10px 0; padding: 0; }
+    </style>
+</head>
+<body>
+
+<div id="sleep-overlay"></div>
+
+<div class="container">
+    <div class="header"><h1 id="view-title">routine</h1></div>
+
+    <div id="tasks-view" class="view active">
+        <button style="background:var(--dim); color:var(--text-color); margin-bottom:15px; width:100%" onclick="requestSync()">Sync System Alerts</button>
+        <div class="input-section">
+            <input type="text" id="taskName" placeholder="Activity name...">
+            <input type="time" id="taskTime">
+            <button onclick="addTask()">Add &#x2713;</button>
+        </div>
+        <div id="task-list"></div>
+    </div>
+
+    <div id="presets-view" class="view">
+        <div class="input-section">
+            <input type="text" id="presetName" placeholder="Routine name...">
+            <button onclick="addPreset()">Save Preset</button>
+        </div>
+        <div id="preset-list"></div>
+    </div>
+
+    <div id="settings-view" class="view">
+        <div class="setting-row">
+            <div class="control-label">
+                <span>Manual Sleep Mode</span>
+                <button id="sleep-toggle" onclick="toggleSleep()" style="width: 80px; padding: 5px;">OFF</button>
+            </div>
+        </div>
+
+        <div class="setting-row">
+            <div class="control-label">
+                <span>Disable Auto-Dim</span>
+                <button id="autodim-toggle" onclick="toggleAutoDim()" style="width: 80px; padding: 5px;">NO</button>
+            </div>
+        </div>
+
+        <div class="setting-row">
+            <div class="control-label"><span>Auto-Dim Time</span></div>
+            <input type="time" id="autoDimTime" onchange="appData.autoDimTime=this.value;save();">
+        </div>
+
+        <div class="setting-row">
+            <div class="control-label"><span>Dim Level</span></div>
+            <input type="range" id="dimRange" min="0" max="90" value="50" oninput="applySleepStyles()">
+        </div>
+
+        <div class="setting-row">
+            <div class="control-label">
+                <span>Tint Color</span>
+                <input type="color" id="tintColor" value="#ff8c00" oninput="applySleepStyles()" style="width:40px; height:40px; padding:0; border:none; background:none;">
+            </div>
+        </div>
+
+        <div class="setting-row">
+            <div class="control-label">
+                <span>Transition (mins)</span>
+                <input type="number" id="bufferInput" style="width: 60px;" onchange="updateBuffer(this.value)">
+            </div>
+        </div>
+    </div>
+
+    <div class="taskbar">
+        <div class="nav-item active" id="nav-tasks" onclick="showView('tasks')">
+            <span style="font-size:1.4rem">&#x231A;</span><span>Routine</span>
+        </div>
+        <div class="nav-item" id="nav-presets" onclick="showView('presets')">
+            <span style="font-size:1.4rem">&#x2630;</span><span>Presets</span>
+        </div>
+        <div id="nav-settings" class="nav-item" onclick="showView('settings')">
+            <span style="font-size:1.4rem">&#x2699;</span><span>Settings</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    let appData = JSON.parse(localStorage.getItem('bt_v8_data')) || {
+        presets: [{ name: "Nightly", tasks: [] }],
+        activeIndex: 0,
+        bufferMinutes: 5,
+        isSleepEnabled: false,
+        isAutoDimDisabled: false,
+        dimLevel: 50,
+        tintColor: "#ff8c00",
+        autoDimTime: "22:00"
+    };
+
+    function save() { localStorage.setItem('bt_v8_data', JSON.stringify(appData)); }
+
+    function applySleepStyles() {
+        const overlay = document.getElementById('sleep-overlay');
+        appData.dimLevel = document.getElementById('dimRange').value;
+        appData.tintColor = document.getElementById('tintColor').value;
+        save();
+
+        if (appData.isSleepEnabled) {
+            const r = parseInt(appData.tintColor.substr(1,2), 16);
+            const g = parseInt(appData.tintColor.substr(3,2), 16);
+            const b = parseInt(appData.tintColor.substr(5,2), 16);
+            overlay.style.backgroundColor = `rgba(0,0,0, ${appData.dimLevel/100})`;
+            overlay.style.boxShadow = `inset 0 0 100vw rgba(${r},${g},${b}, 0.25)`;
+        } else {
+            overlay.style.backgroundColor = "transparent";
+            overlay.style.boxShadow = "none";
+        }
+    }
+
+    function toggleSleep() {
+        appData.isSleepEnabled = !appData.isSleepEnabled;
+        updateUI();
+        applySleepStyles();
+    }
+
+    function toggleAutoDim() {
+        appData.isAutoDimDisabled = !appData.isAutoDimDisabled;
+        updateUI();
+        save();
+    }
+
+    function updateUI() {
+        const sleepBtn = document.getElementById('sleep-toggle');
+        sleepBtn.innerText = appData.isSleepEnabled ? "ON" : "OFF";
+        sleepBtn.style.background = appData.isSleepEnabled ? "var(--accent-color)" : "var(--dim)";
+
+        const autoBtn = document.getElementById('autodim-toggle');
+        autoBtn.innerText = appData.isAutoDimDisabled ? "YES" : "NO";
+        autoBtn.style.background = appData.isAutoDimDisabled ? "var(--accent-color)" : "var(--dim)";
+    }
+
+    function showView(view) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById(view + '-view').classList.add('active');
+        document.getElementById('nav-' + view).classList.add('active');
+        document.getElementById('view-title').innerText = view;
+        render();
+    }
+
+    function requestSync() {
+        Notification.requestPermission().then(p => {
+            if (p === 'granted') new Notification("Bedtime Timer", { body: "Notifications Ready" });
+        });
+    }
+
+    function updateBuffer(val) { appData.bufferMinutes = parseInt(val) || 0; save(); }
+
+    function addTask() {
+        const name = document.getElementById('taskName').value;
+        const time = document.getElementById('taskTime').value;
+        if (name && time) {
+            appData.presets[appData.activeIndex].tasks.push({ name, time, id: Date.now() });
+            document.getElementById('taskName').value = '';
+            save(); render();
+        }
+    }
+
+    function addPreset() {
+        const val = document.getElementById('presetName').value;
+        if (val) {
+            appData.presets.push({ name: val, tasks: [] });
+            document.getElementById('presetName').value = '';
+            save(); render();
+        }
+    }
+
+    function render() {
+        const tList = document.getElementById('task-list');
+        tList.innerHTML = '';
+        appData.presets[appData.activeIndex].tasks.sort((a,b) => a.time.localeCompare(b.time)).forEach(t => {
+            tList.innerHTML += `<div class="item">
+                <div style="flex-grow:1"><input type="text" value="${t.name}" onchange="t.name=this.value;save();" style="background:none; border:none; padding:0; width:80%">
+                <div style="color:var(--accent-color); font-size:0.85rem">${t.time}</div></div>
+                <button class="del-btn" onclick="appData.presets[appData.activeIndex].tasks=appData.presets[appData.activeIndex].tasks.filter(x=>x.id!==${t.id});save();render();">&#x2715;</button>
+            </div>`;
+        });
+
+        const pList = document.getElementById('preset-list');
+        pList.innerHTML = '';
+        appData.presets.forEach((p, i) => {
+            pList.innerHTML += `<div class="item" onclick="appData.activeIndex=${i};showView('tasks');" style="${i === appData.activeIndex ? 'border:1px solid var(--accent-color)' : ''}">
+                <span>${p.name}</span>
+                <button class="del-btn" onclick="event.stopPropagation();appData.presets.splice(${i},1);save();render();">&#x2715;</button>
+            </div>`;
+        });
+
+        document.getElementById('bufferInput').value = appData.bufferMinutes;
+        document.getElementById('dimRange').value = appData.dimLevel;
+        document.getElementById('tintColor').value = appData.tintColor;
+        document.getElementById('autoDimTime').value = appData.autoDimTime;
+        updateUI();
+    }
+
+    setInterval(() => {
+        const d = new Date();
+        const nowStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        
+        // Auto-Dim Logic: Only triggers if NOT disabled in settings
+        if (nowStr === appData.autoDimTime && d.getSeconds() === 0 && !appData.isSleepEnabled && !appData.isAutoDimDisabled) {
+            toggleSleep();
+        }
+
+        const bufferDate = new Date(d.getTime() + appData.bufferMinutes * 60000);
+        const bufferStr = `${String(bufferDate.getHours()).padStart(2,'0')}:${String(bufferDate.getMinutes()).padStart(2,'0')}`;
+
+        appData.presets[appData.activeIndex].tasks.forEach(task => {
+            if (task.time === nowStr && d.getSeconds() === 0) {
+                if (Notification.permission === 'granted') new Notification("Start: " + task.name);
+            }
+            if (task.time === bufferStr && d.getSeconds() === 0 && appData.bufferMinutes > 0) {
+                if (Notification.permission === 'granted') new Notification("Heads up: " + task.name);
+            }
+        });
+    }, 1000);
+
+    applySleepStyles();
+    render();
+</script>
+</body>
+</html>
