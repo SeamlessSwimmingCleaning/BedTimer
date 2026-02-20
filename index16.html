@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Fun Clicker Tree</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #e0f7fa; /* Light blue background */
+            color: #333; font-family: 'Segoe UI', sans-serif;
+            overflow: hidden; touch-action: none;
+            -webkit-user-select: none; user-select: none;
+        }
+        #hud {
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            pointer-events: none; z-index: 10;
+        }
+        #money { font-size: 50px; font-weight: 900; color: #00796b; text-shadow: 1px 1px 0 #fff; }
+        #mps { font-size: 20px; color: #004d40; font-weight: bold; }
+        
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 100;
+            display: flex; justify-content: center; align-items: center;
+        }
+        button#play {
+            padding: 20px 50px; font-size: 24px; font-weight: bold;
+            background: #ffeb3b; color: #333; border: 4px solid #fbc02d;
+            border-radius: 15px; cursor: pointer; box-shadow: 0 5px 0 #f57f17;
+        }
+        button#play:active { transform: translateY(3px); box-shadow: 0 2px 0 #f57f17; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay"><button id="play">CLICK TO START!</button></div>
+
+    <div id="hud">
+        <div id="money">0 P$</div>
+        <div id="mps">0 P$/sec</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let width, height, dpr;
+
+function resize() {
+    dpr = window.devicePixelRatio || 1;
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- GAME STATE ---
+const STATE = {
+    points: 0,
+    multiplier: 1,
+    baseMPS: 1, 
+    camera: { x: width/2, y: height/2 },
+    lastUpdate: Date.now()
+};
+
+// --- TREE DATA ---
+const tree = [
+    { id: 'start', name: "Start Engine", desc: "+1 P$/sec", cost: 0, owned: 1, x: 0, y: 0, parent: null, group: 'starter' },
+    { id: 'up1', name: "Faster Gears", desc: "1.5x Multiplier", cost: 15, owned: 0, x: 0, y: 150, parent: 'start', group: 'starter' },
+    { id: 'up2', name: "Quantum CPU", desc: "2x Multiplier", cost: 100, owned: 0, x: -150, y: 300, parent: 'up1', group: 'starter' },
+    { id: 'pres_gate', name: "PRESTIGE", desc: "Unlock Golden Area", cost: 1000, owned: 0, x: 150, y: 300, parent: 'up1', group: 'prestige' },
+    { id: 'p1', name: "Gold Miner", desc: "5x Multiplier", cost: 5000, owned: 0, x: 150, y: 450, parent: 'pres_gate', group: 'prestige' }
+];
+
+// --- AUDIO (Happy Chime) ---
+let audioCtx;
+function playHappySound() {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    
+    // Play a short major chord
+    osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+    osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+    
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.4);
+}
+
+// --- CORE LOGIC ---
+function update() {
+    const now = Date.now();
+    const dt = (now - STATE.lastUpdate) / 1000;
+    STATE.lastUpdate = now;
+
+    // Calculate Multiplier
+    let totalMult = 1;
+    if (tree[1].owned > 0) totalMult *= 1.5;
+    if (tree[2].owned > 0) totalMult *= 2.0;
+    if (tree[4].owned > 0) totalMult *= 5.0;
+    STATE.multiplier = totalMult;
+
+    // Add Points
+    STATE.points += (STATE.baseMPS * STATE.multiplier) * dt;
+
+    // Update HUD
+    document.getElementById('money').innerText = Math.floor(STATE.points).toLocaleString() + " P$";
+    document.getElementById('mps').innerText = (STATE.baseMPS * STATE.multiplier).toFixed(1) + " P$/sec";
+}
+
+function draw() {
+    ctx.fillStyle = '#e0f7fa';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.save();
+    ctx.translate(STATE.camera.x, STATE.camera.y);
+
+    const BOX_W = 160;
+    const BOX_H = 100;
+
+    // Draw lines
+    tree.forEach(node => {
+        if (node.parent) {
+            const p = tree.find(n => n.id === node.parent);
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(node.x, node.y);
+            ctx.strokeStyle = p.owned > 0 ? '#b2dfdb' : '#e0e0e0';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+        }
+    });
+
+    // Draw Nodes
+    tree.forEach(node => {
+        const isParentOwned = !node.parent || tree.find(n => n.id === node.parent).owned > 0;
+        if (!isParentOwned) return;
+
+        const canAfford = STATE.points >= node.cost;
+        
+        // Color Palette
+        let boxColor = "#fff";
+        let borderColor = "#b2ebf2";
+        let textColor = "#006064";
+
+        if (node.owned > 0) {
+            boxColor = "#a5d6a7"; // Green if owned
+            borderColor = "#81c784";
+        } else if (canAfford) {
+            boxColor = node.group === 'prestige' ? "#fff9c4" : "#e3f2fd"; // Yellow/Blue if affordable
+            borderColor = node.group === 'prestige' ? "#fff176" : "#90caf9";
+        } else {
+            boxColor = "#eeeeee"; // Grey if not affordable
+            borderColor = "#bdbdbd";
+            textColor = "#9e9e9e";
+        }
+
+        // Draw Box
+        ctx.fillStyle = boxColor;
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = 5;
+        
+        // Rounded rectangle
+        ctx.beginPath();
+        ctx.roundRect(node.x - BOX_W/2, node.y - BOX_H/2, BOX_W, BOX_H, 15);
+        ctx.fill();
+        ctx.stroke();
+
+        // Text
+        ctx.textAlign = 'center';
+        ctx.fillStyle = textColor;
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(node.name, node.x, node.y - 15);
+        ctx.font = '12px Arial';
+        ctx.fillText(node.desc, node.x, node.y + 10);
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(node.owned > 0 ? "BOUGHT!" : "Cost: " + node.cost, node.x, node.y + 35);
+    });
+
+    ctx.restore();
+    update();
+    requestAnimationFrame(draw);
+}
+
+// --- INPUTS ---
+let isDragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+canvas.onmousedown = (e) => { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; };
+canvas.ontouchstart = (e) => { isDragging = true; lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+
+window.onmousemove = (e) => { if(isDragging) moveCamera(e.clientX, e.clientY); };
+window.ontouchmove = (e) => { if(isDragging) moveCamera(e.touches[0].clientX, e.touches[0].clientY); };
+
+function moveCamera(x, y) {
+    STATE.camera.x += x - lastMouse.x;
+    STATE.camera.y += y - lastMouse.y;
+    lastMouse = { x, y };
+}
+
+window.onmouseup = window.ontouchend = () => { isDragging = false; };
+
+canvas.onclick = (e) => {
+    const wx = e.clientX - STATE.camera.x;
+    const wy = e.clientY - STATE.camera.y;
+    
+    tree.forEach(node => {
+        const isParentOwned = !node.parent || tree.find(n => n.id === node.parent).owned > 0;
+        if (isParentOwned && Math.abs(wx - node.x) < 80 && Math.abs(wy - node.y) < 50) {
+            if (STATE.points >= node.cost && node.owned === 0) {
+                STATE.points -= node.cost;
+                node.owned = 1;
+                if(audioCtx) playHappySound();
+            }
+        }
+    });
+};
+
+document.getElementById('play').onclick = () => {
+    document.getElementById('overlay').style.display = 'none';
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    draw();
+};
+</script>
+</body>
+</html>
